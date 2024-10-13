@@ -77,7 +77,61 @@ sudo docker exec -it <docker_id> bash
 gitlab-runner register --url http://10.0.2.15 --token glrt-ibQfDVjFs4V8eb7NAs9s
 ```
 
-# Module 3 - Configure GitLab pipeline
+# Module 3 - Install SonarQube
+
+``` Bash
+sudo sysctl -w vm.max_map_count=262144
+```
+
+``` yaml
+version: "3.8"
+
+services:
+  sonarqube:
+    image: sonarqube:lts-community
+    depends_on:
+      - sonar_db
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonar_db:5432/sonar
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: sonar
+    ports:
+      - "9000:9000"
+    volumes:
+      - sonarqube_conf:/opt/sonarqube/conf
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+      - sonarqube_temp:/opt/sonarqube/temp
+
+  sonar_db:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: sonar
+      POSTGRES_DB: sonar
+    volumes:
+      - sonar_db:/var/lib/postgresql
+      - sonar_db_data:/var/lib/postgresql/data
+
+volumes:
+  sonarqube_conf:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
+  sonarqube_temp:
+  sonar_db:
+  sonar_db_data:
+```
+
+``` Bash
+docker exec -it sonarqube bash
+cd /opt/sonarqube/extensions/plugins
+wget https://github.com/cnescatlab/sonar-cnes-report/releases/download/4.3.0/sonar-cnes-report-4.3.0.jar
+docker sonarqube restart
+```
+
+# Module 4 - Configure GitLab pipeline
 
 ## DevSecOps Tools
 
@@ -173,8 +227,8 @@ defect-dojo-job:
 
 ## 3. Ready CI/CD pipeline
 ``` yml
-# TODO: Branch-Name-Lint, CodeQL, SonarQube, Dependency Check, Dependency Track, Defect Dojo, OWASP ZAP, Trivy,
-# READY: GitLeaks, TruffleHog, CycloneDX, Bearer
+# TODO: Branch-Name-Lint, CodeQL, Dependency Check, Dependency Track, Defect Dojo, OWASP ZAP, Trivy
+# READY: GitLeaks, TruffleHog, CycloneDX, Bearer, SonarQube
 stages:
   - commit
   - secrets
@@ -239,10 +293,21 @@ codeql-job:
   script:
     - echo "CodeQL"
 
-sonarqube-job:
+sonarqube:
   stage: quality
+  image: sonarsource/sonar-scanner-cli:latest
+  variables:
+    SONAR_ENDPOINT: $SONAR_HOST_URL/api/cnesreport/report?key=$CI_PROJECT_NAME&format=json&author=&token=$SONAR_TOKEN"
   script:
-    - echo "SonarQube"
+    - sonar-scanner -Dsonar.projectKey=$CI_PROJECT_NAME -Dsonar.sources=. -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.login=$SONAR_TOKEN
+    - 'curl -X GET -u $SONAR_TOKEN: "$SONAR_ENDPOINT" -o sonarqube-report.json'
+  artifacts:
+    paths:
+      - sonarqube-report.json
+    reports:
+      sast: sonarqube-report.json
+    when: always
+  allow_failure: true
 
 dependency-check-job:
   stage: dependency
