@@ -79,6 +79,14 @@ gitlab-runner register --url http://10.0.2.15 --token glrt-ibQfDVjFs4V8eb7NAs9s
 
 # Module 3 - Configure GitLab pipeline
 
+## DevSecOps Tools
+
+| Commit | Secrets | SAST | Quality | Dependency | DAST | Aggregates |
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+|Branch Name Lint | GitLeaks | Bearer | SonarQube | Dependency Track | OWASP ZAP | Defect Dojo
+| | TruffleHog | | | Trivy | | Dependency Track
+
+
 ## 1. Test the CI/CD pipeline
 ``` yml
 stages:
