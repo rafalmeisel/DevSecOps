@@ -124,13 +124,6 @@ volumes:
   sonar_db_data:
 ```
 
-``` Bash
-docker exec -it sonarqube bash
-cd /opt/sonarqube/extensions/plugins
-wget https://github.com/cnescatlab/sonar-cnes-report/releases/download/4.3.0/sonar-cnes-report-4.3.0.jar
-docker sonarqube restart
-```
-
 # Module 4 - Configure GitLab pipeline
 
 ## DevSecOps Tools
