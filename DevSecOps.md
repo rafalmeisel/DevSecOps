@@ -296,11 +296,8 @@ codeql-job:
 sonarqube:
   stage: quality
   image: sonarsource/sonar-scanner-cli:latest
-  variables:
-    SONAR_ENDPOINT: $SONAR_HOST_URL/api/cnesreport/report?key=$CI_PROJECT_NAME&format=json&author=&token=$SONAR_TOKEN"
   script:
     - sonar-scanner -Dsonar.projectKey=$CI_PROJECT_NAME -Dsonar.sources=. -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.login=$SONAR_TOKEN
-    - 'curl -X GET -u $SONAR_TOKEN: "$SONAR_ENDPOINT" -o sonarqube-report.json'
   artifacts:
     paths:
       - sonarqube-report.json
