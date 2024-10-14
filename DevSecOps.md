@@ -298,12 +298,6 @@ sonarqube:
   image: sonarsource/sonar-scanner-cli:latest
   script:
     - sonar-scanner -Dsonar.projectKey=$CI_PROJECT_NAME -Dsonar.sources=. -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.login=$SONAR_TOKEN
-  artifacts:
-    paths:
-      - sonarqube-report.json
-    reports:
-      sast: sonarqube-report.json
-    when: always
   allow_failure: true
 
 dependency-check-job:
