@@ -253,17 +253,44 @@ stages:
   - dast
   - aggregates
 
+variables:
+
+# Tokens
+# DEFECT_DOJO_TOKEN: ""
+# DEFECT_DOJO_URL: ""
+# NVD_API_KEY: ""
+# SONAR_HOST_URL: ""
+# SONAR_TOKEN: ""
+
+# Enable tools
+  BRANCH_NAME_LINT_ENABLED: "true"
+  GITLEAKS_ENABLED: "true"
+  TRUFFLEHOG_ENABLED: "true"
+  BEARER_ENABLED: "true"
+  CODEQL_ENABLED: "true"
+  SONARQUBE_ENABLED: "true"
+  DEPENDENCY_CHECK_ENABLED: "true"
+  CYCLONEDX_ENABLED: "true"
+  TRIVY_ENABLED: "true"
+  OWASP_ZAP_ENABLED: "true"
+  DEPENDENCY_TRACK_ENABLED: "true"
+  DEFECT_DOJO_ENABLED: "true"
+  
 before_script:
     - export FORMATTED_DATE="$(date -d "$CI_JOB_STARTED_AT" +"%Y-%m-%d")"
 
 cache:
   paths:
     - node_modules/
+    - ~/.m2/repository/org/owasp/dependency-check-data
 
-branch-name-lint-job:
+branch-name-lint:
   stage: commit
   script:
     - echo "Branch Name Lint"
+  only:
+    variables:
+      - $BRANCH_NAME_LINT_ENABLED == "true"
 
 gitleaks:
   stage: secrets
@@ -279,8 +306,11 @@ gitleaks:
       secret_detection: gitleaks-report.json
     when: always
   allow_failure: true
+  only:
+    variables:
+      - $GITLEAKS_ENABLED == "true"
 
-trufflehog-job:
+trufflehog:
   stage: secrets
   image: 
     name: docker.io/trufflesecurity/trufflehog:latest
@@ -294,6 +324,9 @@ trufflehog-job:
       secret_detection: trufflehog-report.json
     when: always
   allow_failure: true
+  only:
+    variables:
+      - $TRUFFLEHOG_ENABLED == "true"
 
 bearer:
   stage: sast
@@ -309,19 +342,34 @@ bearer:
       sast: bearer-report.json
     when: always
   allow_failure: true
+  only:
+    variables:
+      - $BEARER_ENABLED == "true"
 
 codeql-job:
   stage: sast
   script:
     - echo "CodeQL"
+  only:
+    variables:
+      - $CODEQL_ENABLED == "true"
 
 sonarqube:
   stage: quality
   image: sonarsource/sonar-scanner-cli:latest
   script:
     - sonar-scanner -Dsonar.projectKey=$CI_PROJECT_NAME -Dsonar.sources=. -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.login=$SONAR_TOKEN
-    - 'curl -u $SONAR_TOKEN: "https://$SONAR_HOST_URL/api/issues/search?componentKeys=$CI_PROJECT_NAME&resolved=false" -o sonarqube-report.json'
+    - 'curl -u $SONAR_TOKEN: "$SONAR_HOST_URL/api/issues/search?componentKeys=$CI_PROJECT_NAME&resolved=false" -o sonarqube-report.json'
+  artifacts:
+    paths: 
+      - sonarqube-report.json
+    reports:
+      dependency_scanning: sonarqube-report.json
+    when: always
   allow_failure: true
+  only:
+    variables:
+      - $SONARQUBE_ENABLED == "true"
 
 dependency_check:
   stage: dependency
@@ -329,14 +377,17 @@ dependency_check:
     name: owasp/dependency-check:latest
     entrypoint: [""]
   script:
-    - /usr/share/dependency-check/bin/dependency-check.sh --scan . --format JSON --project "$CI_PROJECT_NAME" --out dependency-check-report.json
+    - /usr/share/dependency-check/bin/dependency-check.sh --scan . --format XML --project "$CI_PROJECT_NAME" --out dependency-check-report.xml --nvdApiKey $NVD_API_KEY --exclude "**/*.zip" --exclude "**/package-lock.json"
   artifacts:
-    paths:
-      - dependency-check-report.json
+    paths: 
+      - dependency-check-report.xml
     reports:
-      dependency_scanning: dependency-check-report.json
+      dependency_scanning: dependency-check-report.xml
     when: always
   allow_failure: true
+  only:
+    variables:
+      - $DEPENDENCY_CHECK_ENABLED == "true"
 
 cyclonedx:
   stage: dependency
@@ -353,126 +404,158 @@ cyclonedx:
       dependency_scanning: cyclonedx-report.json
     when: always
   allow_failure: true
+  only:
+    variables:
+      - $CYCLONEDX_ENABLED == "true"
 
-trivy-job:
+trivy:
   stage: dependency
   script:
     - echo "Trivy"
+  only:
+    variables:
+      - $TRIVY_ENABLED == "true"
 
-owasp-zap-job:
+owasp-zap:
   stage: dast
   script:
     - echo "OWASP ZAP"
+  only:
+    variables:
+      - $OWASP_ZAP_ENABLED == "true"
 
-dependency-track-job:
+dependency-track:
   stage: aggregates
   script:
     - echo "Dependency Track"
+  only:
+    variables:
+      - $DEPENDENCY_TRACK_ENABLED == "true"
 
 defectdojo:
   stage: aggregates
   image: python:3.9-bullseye
   script:
-
-  # Truffle Hog
-    - 'curl -v -X POST "$DEFECT_DOJO_URL/api/v2/import-scan/"
-    -H "accept: application/json"
-    -H "Content-Type: multipart/form-data"
-    -H "Authorization: Token $DEFECT_DOJO_TOKEN"
-    -F "minimum_severity=Info"
-    -F "active=true"
-    -F "verified=true"
-    -F "scan_type=Trufflehog Scan"
-    -F "file=@trufflehog-report.json"
-    -F "close_old_findings=true"
-    -F "product_name=$CI_PROJECT_NAME"
-    -F "scan_date=$FORMATTED_DATE"
-    -F "engagement_name=$CI_PROJECT_NAME"
-    -F "auto_create_context=true"
-    -F "product_type_name=Web"'
+    # Truffle Hog
+    - |
+      if [ "$TRUFFLEHOG_ENABLED" == "true" ]; then
+        curl -v -X POST "$DEFECT_DOJO_URL/api/v2/import-scan/" \
+        -H "accept: application/json" \
+        -H "Content-Type: multipart/form-data" \
+        -H "Authorization: Token $DEFECT_DOJO_TOKEN" \
+        -F "minimum_severity=Info" \
+        -F "active=true" \
+        -F "verified=true" \
+        -F "scan_type=Trufflehog Scan" \
+        -F "file=@trufflehog-report.json" \
+        -F "close_old_findings=true" \
+        -F "product_name=$CI_PROJECT_NAME" \
+        -F "scan_date=$FORMATTED_DATE" \
+        -F "engagement_name=$CI_PROJECT_NAME" \
+        -F "auto_create_context=true" \
+        -F "product_type_name=Web"
+      fi
   
   # GitLeaks
-    - 'curl -v -X POST "$DEFECT_DOJO_URL/api/v2/import-scan/"
-    -H "accept: application/json"
-    -H "Content-Type: multipart/form-data"
-    -H "Authorization: Token $DEFECT_DOJO_TOKEN"
-    -F "minimum_severity=Info"
-    -F "active=true"
-    -F "verified=true"
-    -F "scan_type=Gitleaks Scan"
-    -F "file=@gitleaks-report.json"
-    -F "close_old_findings=true"
-    -F "product_name=$CI_PROJECT_NAME"
-    -F "scan_date=$FORMATTED_DATE"
-    -F "engagement_name=$CI_PROJECT_NAME"
-    -F "auto_create_context=true"
-    -F "product_type_name=Web"'
+    - | 
+      if [ "$GITLEAKS_ENABLED" == "true" ]; then
+        curl -v -X POST "$DEFECT_DOJO_URL/api/v2/import-scan/" \
+        -H "accept: application/json" \
+        -H "Content-Type: multipart/form-data" \
+        -H "Authorization: Token $DEFECT_DOJO_TOKEN" \
+        -F "minimum_severity=Info" \
+        -F "active=true" \
+        -F "verified=true" \
+        -F "scan_type=Gitleaks Scan" \
+        -F "file=@gitleaks-report.json" \
+        -F "close_old_findings=true" \
+        -F "product_name=$CI_PROJECT_NAME" \
+        -F "scan_date=$FORMATTED_DATE" \
+        -F "engagement_name=$CI_PROJECT_NAME" \
+        -F "auto_create_context=true" \
+        -F "product_type_name=Web"
+      fi
   
   # Bearer
-    - 'curl -v -X POST "$DEFECT_DOJO_URL/api/v2/import-scan/"
-    -H "accept: application/json"
-    -H "Content-Type: multipart/form-data"
-    -H "Authorization: Token $DEFECT_DOJO_TOKEN"
-    -F "minimum_severity=Info"
-    -F "active=true"
-    -F "verified=true"
-    -F "scan_type=Bearer CLI"
-    -F "file=@bearer-report.json"
-    -F "close_old_findings=true"
-    -F "product_name=$CI_PROJECT_NAME"
-    -F "scan_date=$FORMATTED_DATE"
-    -F "engagement_name=$CI_PROJECT_NAME"
-    -F "auto_create_context=true"
-    -F "product_type_name=Web"'
+    - | 
+      if [ "$BEARER_ENABLED" == "true" ]; then
+        curl -v -X POST "$DEFECT_DOJO_URL/api/v2/import-scan/" \
+        -H "accept: application/json" \
+        -H "Content-Type: multipart/form-data" \
+        -H "Authorization: Token $DEFECT_DOJO_TOKEN" \
+        -F "minimum_severity=Info" \
+        -F "active=true" \
+        -F "verified=true" \
+        -F "scan_type=Bearer CLI" \
+        -F "file=@bearer-report.json" \
+        -F "close_old_findings=true" \
+        -F "product_name=$CI_PROJECT_NAME" \
+        -F "scan_date=$FORMATTED_DATE" \
+        -F "engagement_name=$CI_PROJECT_NAME" \
+        -F "auto_create_context=true" \
+        -F "product_type_name=Web"
+      fi
   
   # CycloneDX
-    - 'curl -v -X POST "$DEFECT_DOJO_URL/api/v2/import-scan/"
-    -H "accept: application/json"
-    -H "Content-Type: multipart/form-data"
-    -H "Authorization: Token $DEFECT_DOJO_TOKEN"
-    -F "minimum_severity=Info"
-    -F "active=true"
-    -F "verified=true"
-    -F "scan_type=CycloneDX Scan"
-    -F "file=@cyclonedx-report.json"
-    -F "close_old_findings=true"
-    -F "product_name=$CI_PROJECT_NAME"
-    -F "scan_date=$FORMATTED_DATE"
-    -F "engagement_name=$CI_PROJECT_NAME"
-    -F "auto_create_context=true"
-    -F "product_type_name=Web"'
-  
+    - | 
+      if [ "$CYCLONEDX_ENABLED" == "true" ]; then
+        curl -v -X POST "$DEFECT_DOJO_URL/api/v2/import-scan/" \
+        -H "accept: application/json" \
+        -H "Content-Type: multipart/form-data" \
+        -H "Authorization: Token $DEFECT_DOJO_TOKEN" \
+        -F "minimum_severity=Info" \
+        -F "active=true" \
+        -F "verified=true" \
+        -F "scan_type=CycloneDX Scan" \
+        -F "file=@cyclonedx-report.json" \
+        -F "close_old_findings=true" \
+        -F "product_name=$CI_PROJECT_NAME" \
+        -F "scan_date=$FORMATTED_DATE" \
+        -F "engagement_name=$CI_PROJECT_NAME" \
+        -F "auto_create_context=true" \
+        -F "product_type_name=Web"
+      fi
+
   # Dependency Check
-    - 'curl -v -X POST "$DEFECT_DOJO_URL/api/v2/import-scan/"
-    -H "accept: application/json"
-    -H "Content-Type: multipart/form-data"
-    -H "Authorization: Token $DEFECT_DOJO_TOKEN"
-    -F "minimum_severity=Info"
-    -F "active=true"
-    -F "verified=true"
-    -F "scan_type=Dependency Check Scan"
-    -F "file=@dependency-check-report.json"
-    -F "close_old_findings=true"
-    -F "product_name=$CI_PROJECT_NAME"
-    -F "scan_date=$FORMATTED_DATE"
-    -F "engagement_name=$CI_PROJECT_NAME"
-    -F "auto_create_context=true"
-    -F "product_type_name=Web"'
+    - | 
+      if [ "$DEPENDENCY_CHECK_ENABLED" == "true" ]; then
+        curl -v -X POST "$DEFECT_DOJO_URL/api/v2/import-scan/" \
+        -H "accept: application/json" \
+        -H "Content-Type: multipart/form-data" \
+        -H "Authorization: Token $DEFECT_DOJO_TOKEN" \
+        -F "minimum_severity=Info" \
+        -F "active=true" \
+        -F "verified=true" \
+        -F "scan_type=Dependency Check Scan" \
+        -F "file=@dependency-check-report.json" \
+        -F "close_old_findings=true" \
+        -F "product_name=$CI_PROJECT_NAME" \
+        -F "scan_date=$FORMATTED_DATE" \
+        -F "engagement_name=$CI_PROJECT_NAME" \
+        -F "auto_create_context=true" \
+        -F "product_type_name=Web"
+      fi
   
   # SonarQube
-    - 'curl -v -X POST "$DEFECT_DOJO_URL/api/v2/import-scan/"
-    -H "accept: application/json"
-    -H "Content-Type: multipart/form-data"
-    -H "Authorization: Token $DEFECT_DOJO_TOKEN"
-    -F "minimum_severity=Info"
-    -F "active=true"
-    -F "verified=true"
-    -F "scan_type=SonarQube Scan"
-    -F "file=@sonarqube-report.json"
-    -F "close_old_findings=true"
-    -F "product_name=$CI_PROJECT_NAME"
-    -F "scan_date=$FORMATTED_DATE"
-    -F "engagement_name=$CI_PROJECT_NAME"
-    -F "auto_create_context=true"
-    -F "product_type_name=Web"'
+    - | 
+      if [ "$SONARQUBE_ENABLED" == "true" ]; then
+        curl -v -X POST "$DEFECT_DOJO_URL/api/v2/import-scan/" \
+        -H "accept: application/json" \
+        -H "Content-Type: multipart/form-data" \
+        -H "Authorization: Token $DEFECT_DOJO_TOKEN" \
+        -F "minimum_severity=Info" \
+        -F "active=true" \
+        -F "verified=true" \
+        -F "scan_type=SonarQube Scan" \
+        -F "file=@sonarqube-report.json" \
+        -F "close_old_findings=true" \
+        -F "product_name=$CI_PROJECT_NAME" \
+        -F "scan_date=$FORMATTED_DATE" \
+        -F "engagement_name=$CI_PROJECT_NAME" \
+        -F "auto_create_context=true" \
+        -F "product_type_name=Web"
+      fi
+  only:
+    variables:
+      - $DEFECT_DOJO_ENABLED == "true"
 ```
