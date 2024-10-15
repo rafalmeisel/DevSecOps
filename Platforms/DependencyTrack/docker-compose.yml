@@ -1,0 +1,41 @@
+version: '3.8'
+
+volumes:
+  dependency-track:
+
+# Dependency Track Server
+services:
+  dtrack-apiserver:
+    image: dependencytrack/apiserver
+    deploy:
+      resources:
+        limits:
+          memory: 12288m
+        reservations:
+          memory: 8192m
+      restart_policy:
+        condition: on-failure
+    ports:
+      - '8889:8080'
+    volumes:
+      - 'dependency-track:/data'
+    restart: unless-stopped
+    networks:
+    - devsecops-network
+
+# Dependency Track Web Application
+  dtrack-frontend:
+    image: dependencytrack/frontend
+    depends_on:
+      - dtrack-apiserver
+    environment:
+      - API_BASE_URL=http://localhost:8889
+    ports:
+      - "8888:8080"
+    restart: unless-stopped
+    networks:
+    - devsecops-network
+
+networks:
+  devsecops-network:
+    name: devsecops-network
