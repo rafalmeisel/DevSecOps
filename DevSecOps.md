@@ -124,7 +124,29 @@ volumes:
   sonar_db_data:
 ```
 
-# Module 4 - Configure GitLab pipeline
+# Module 4 - Install Defect Dojo
+
+``` Bash
+# Download Defect Dojo repository
+git clone https://github.com/DefectDojo/django-DefectDojo
+
+# Go to Defect Dojo repository
+cd django-DefectDojo
+
+# Build Docker Compose
+sudo docker-compose build
+
+# Run Docker Compose
+sudo docker-compose up -d
+
+# Get admin credentials. The initializer can take up to 3 minutes to run
+docker-compose logs initializer | grep "Admin password:"
+
+# Run docker-compose logs to track the progress
+docker-compose logs -f
+```
+
+# Module 5 - Configure GitLab pipeline
 
 ## DevSecOps Tools
 
@@ -220,8 +242,8 @@ defect-dojo-job:
 
 ## 3. Ready CI/CD pipeline
 ``` yml
-# TODO: Branch-Name-Lint, CodeQL, Dependency Check, Dependency Track, Defect Dojo, OWASP ZAP, Trivy
-# READY: GitLeaks, TruffleHog, CycloneDX, Bearer, SonarQube
+# TODO: Branch-Name-Lint, CodeQL, Dependency Track, OWASP ZAP, Trivy
+# READY: GitLeaks, TruffleHog, CycloneDX, Bearer, SonarQube, Defect Dojo, Dependency Check
 stages:
   - commit
   - secrets
@@ -230,6 +252,13 @@ stages:
   - dependency
   - dast
   - aggregates
+
+before_script:
+    - export FORMATTED_DATE="$(date -d "$CI_JOB_STARTED_AT" +"%Y-%m-%d")"
+
+cache:
+  paths:
+    - node_modules/
 
 branch-name-lint-job:
   stage: commit
@@ -291,12 +320,23 @@ sonarqube:
   image: sonarsource/sonar-scanner-cli:latest
   script:
     - sonar-scanner -Dsonar.projectKey=$CI_PROJECT_NAME -Dsonar.sources=. -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.login=$SONAR_TOKEN
+    - 'curl -u $SONAR_TOKEN: "https://$SONAR_HOST_URL/api/issues/search?componentKeys=$CI_PROJECT_NAME&resolved=false" -o sonarqube-report.json'
   allow_failure: true
 
-dependency-check-job:
+dependency_check:
   stage: dependency
+  image:
+    name: owasp/dependency-check:latest
+    entrypoint: [""]
   script:
-    - echo "Dependency Check"
+    - /usr/share/dependency-check/bin/dependency-check.sh --scan . --format JSON --project "$CI_PROJECT_NAME" --out dependency-check-report.json
+  artifacts:
+    paths:
+      - dependency-check-report.json
+    reports:
+      dependency_scanning: dependency-check-report.json
+    when: always
+  allow_failure: true
 
 cyclonedx:
   stage: dependency
@@ -329,8 +369,110 @@ dependency-track-job:
   script:
     - echo "Dependency Track"
 
-defect-dojo-job:
+defectdojo:
   stage: aggregates
+  image: python:3.9-bullseye
   script:
-    - echo "Defect Dojo"
+
+  # Truffle Hog
+    - 'curl -v -X POST "$DEFECT_DOJO_URL/api/v2/import-scan/"
+    -H "accept: application/json"
+    -H "Content-Type: multipart/form-data"
+    -H "Authorization: Token $DEFECT_DOJO_TOKEN"
+    -F "minimum_severity=Info"
+    -F "active=true"
+    -F "verified=true"
+    -F "scan_type=Trufflehog Scan"
+    -F "file=@trufflehog-report.json"
+    -F "close_old_findings=true"
+    -F "product_name=$CI_PROJECT_NAME"
+    -F "scan_date=$FORMATTED_DATE"
+    -F "engagement_name=$CI_PROJECT_NAME"
+    -F "auto_create_context=true"
+    -F "product_type_name=Web"'
+  
+  # GitLeaks
+    - 'curl -v -X POST "$DEFECT_DOJO_URL/api/v2/import-scan/"
+    -H "accept: application/json"
+    -H "Content-Type: multipart/form-data"
+    -H "Authorization: Token $DEFECT_DOJO_TOKEN"
+    -F "minimum_severity=Info"
+    -F "active=true"
+    -F "verified=true"
+    -F "scan_type=Gitleaks Scan"
+    -F "file=@gitleaks-report.json"
+    -F "close_old_findings=true"
+    -F "product_name=$CI_PROJECT_NAME"
+    -F "scan_date=$FORMATTED_DATE"
+    -F "engagement_name=$CI_PROJECT_NAME"
+    -F "auto_create_context=true"
+    -F "product_type_name=Web"'
+  
+  # Bearer
+    - 'curl -v -X POST "$DEFECT_DOJO_URL/api/v2/import-scan/"
+    -H "accept: application/json"
+    -H "Content-Type: multipart/form-data"
+    -H "Authorization: Token $DEFECT_DOJO_TOKEN"
+    -F "minimum_severity=Info"
+    -F "active=true"
+    -F "verified=true"
+    -F "scan_type=Bearer CLI"
+    -F "file=@bearer-report.json"
+    -F "close_old_findings=true"
+    -F "product_name=$CI_PROJECT_NAME"
+    -F "scan_date=$FORMATTED_DATE"
+    -F "engagement_name=$CI_PROJECT_NAME"
+    -F "auto_create_context=true"
+    -F "product_type_name=Web"'
+  
+  # CycloneDX
+    - 'curl -v -X POST "$DEFECT_DOJO_URL/api/v2/import-scan/"
+    -H "accept: application/json"
+    -H "Content-Type: multipart/form-data"
+    -H "Authorization: Token $DEFECT_DOJO_TOKEN"
+    -F "minimum_severity=Info"
+    -F "active=true"
+    -F "verified=true"
+    -F "scan_type=CycloneDX Scan"
+    -F "file=@cyclonedx-report.json"
+    -F "close_old_findings=true"
+    -F "product_name=$CI_PROJECT_NAME"
+    -F "scan_date=$FORMATTED_DATE"
+    -F "engagement_name=$CI_PROJECT_NAME"
+    -F "auto_create_context=true"
+    -F "product_type_name=Web"'
+  
+  # Dependency Check
+    - 'curl -v -X POST "$DEFECT_DOJO_URL/api/v2/import-scan/"
+    -H "accept: application/json"
+    -H "Content-Type: multipart/form-data"
+    -H "Authorization: Token $DEFECT_DOJO_TOKEN"
+    -F "minimum_severity=Info"
+    -F "active=true"
+    -F "verified=true"
+    -F "scan_type=Dependency Check Scan"
+    -F "file=@dependency-check-report.json"
+    -F "close_old_findings=true"
+    -F "product_name=$CI_PROJECT_NAME"
+    -F "scan_date=$FORMATTED_DATE"
+    -F "engagement_name=$CI_PROJECT_NAME"
+    -F "auto_create_context=true"
+    -F "product_type_name=Web"'
+  
+  # SonarQube
+    - 'curl -v -X POST "$DEFECT_DOJO_URL/api/v2/import-scan/"
+    -H "accept: application/json"
+    -H "Content-Type: multipart/form-data"
+    -H "Authorization: Token $DEFECT_DOJO_TOKEN"
+    -F "minimum_severity=Info"
+    -F "active=true"
+    -F "verified=true"
+    -F "scan_type=SonarQube Scan"
+    -F "file=@sonarqube-report.json"
+    -F "close_old_findings=true"
+    -F "product_name=$CI_PROJECT_NAME"
+    -F "scan_date=$FORMATTED_DATE"
+    -F "engagement_name=$CI_PROJECT_NAME"
+    -F "auto_create_context=true"
+    -F "product_type_name=Web"'
 ```
