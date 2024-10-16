@@ -1,5 +1,5 @@
-# TODO: Branch-Name-Lint, CodeQL, Dependency Track, OWASP ZAP, Trivy
-# READY: GitLeaks, TruffleHog, CycloneDX, Bearer, SonarQube, Defect Dojo, Dependency Check
+# TODO: Branch-Name-Lint, CodeQL, OWASP ZAP, Trivy
+# READY: GitLeaks, TruffleHog, CycloneDX, Bearer, SonarQube, Defect Dojo, Dependency Check, Dependency Track,
 stages:
   - commit
   - secrets
@@ -17,6 +17,8 @@ variables:
 # NVD_API_KEY: ""
 # SONAR_HOST_URL: ""
 # SONAR_TOKEN: ""
+# DEPENDENCY_TRACK_SERVER_URL: ""
+# DEPENDENCY_TRACK_TOKEN: ""
 
 # Enable tools:
   BRANCH_NAME_LINT_ENABLED: "true"
@@ -148,11 +150,10 @@ dependency_check:
 cyclonedx:
   stage: dependency
   image: 
-    name: node:lts
+    name: cyclonedx/cyclonedx-node:latest
+    entrypoint: [""]
   script:
-    - npm install
-    - npm install --global @cyclonedx/cyclonedx-npm
-    - cyclonedx-npm --output-format json --output-file cyclonedx-report.json
+    - /usr/src/cyclonedx-bom/bin/make-bom.js --include-dev --include-license-text --output cyclonedx-report.json .
   artifacts:
     paths:
       - cyclonedx-report.json
@@ -182,8 +183,14 @@ owasp-zap:
 
 dependency-track:
   stage: aggregates
+  image: alpine/curl:latest
   script:
-    - echo "Dependency Track"
+    - 'curl -X POST $DEPENDENCY_TRACK_URL/api/v1/bom
+    -H "Content-Type: multipart/form-data" 
+    -H "X-Api-Key: $DEPENDENCY_TRACK_TOKEN" 
+    -F "projectName=$CI_PROJECT_NAME"
+    -F "autoCreate=true"
+    -F "bom=@cyclonedx-report.json"'
   only:
     variables:
       - $DEPENDENCY_TRACK_ENABLED == "true"

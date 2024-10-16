@@ -46,12 +46,20 @@ sudo sysctl -w vm.max_map_count=262144
 ## Prepare the Docker Compose
 [SonarQube Docker Compose](./Platforms/SonarQube/docker-compose.yml)
 
-# Module 4 - Install Defect Dojo
+# Module 4 - Install Dependency Track
+
+## Prepare the Docker Compose
+[Dependency Track Docker Compose](./Platforms/DependencyTrack/docker-compose.yml)
+
+## Add permission to create a project to Automation
+Administration -> Teams -> Automation -> Permissions -> PROJECT_CREATION_UPLOAD
+
+# Module 5 - Install Defect Dojo
 
 ## Run the commands
 [Defect Dojo Commands](./Platforms/DefectDojo/commands.sh)
 
-# Module 5 - Configure GitLab pipeline
+# Module 6 - Configure GitLab pipeline
 
 ## DevSecOps Tools
 
