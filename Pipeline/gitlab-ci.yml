@@ -1,5 +1,3 @@
-# TODO: Branch-Name-Lint, CodeQL, OWASP ZAP, Trivy
-# READY: GitLeaks, TruffleHog, CycloneDX, Bearer, SonarQube, Defect Dojo, Dependency Check, Dependency Track,
 stages:
   - commit
   - secrets
@@ -11,7 +9,7 @@ stages:
 
 variables:
 
-# Tokens:
+# Tokens to be configured in GitLab CI/CD:
 # DEFECT_DOJO_TOKEN: ""
 # DEFECT_DOJO_URL: ""
 # NVD_API_KEY: ""
@@ -19,6 +17,7 @@ variables:
 # SONAR_TOKEN: ""
 # DEPENDENCY_TRACK_SERVER_URL: ""
 # DEPENDENCY_TRACK_TOKEN: ""
+# GITLAB_TOKEN
 
 # Enable tools:
   BRANCH_NAME_LINT_ENABLED: "true"
@@ -167,8 +166,18 @@ cyclonedx:
 
 trivy:
   stage: dependency
+  image: 
+    name: aquasec/trivy:latest
+    entrypoint: [""]
   script:
-    - echo "Trivy"
+    - trivy fs --format json --output trivy-report.json .
+  artifacts:
+    paths:
+      - trivy-report.json
+    reports:
+      dependency_scanning: trivy-report.json
+    when: always
+  allow_failure: true
   only:
     variables:
       - $TRIVY_ENABLED == "true"
@@ -311,6 +320,26 @@ defectdojo:
         -F "verified=true" \
         -F "scan_type=SonarQube Scan" \
         -F "file=@sonarqube-report.json" \
+        -F "close_old_findings=true" \
+        -F "product_name=$CI_PROJECT_NAME" \
+        -F "scan_date=$FORMATTED_DATE" \
+        -F "engagement_name=$CI_PROJECT_NAME" \
+        -F "auto_create_context=true" \
+        -F "product_type_name=Web"
+      fi
+
+    # Trivy
+    - | 
+      if [ "$TRIVY_ENABLED" == "true" ]; then
+        curl -v -X POST "$DEFECT_DOJO_URL/api/v2/import-scan/" \
+        -H "accept: application/json" \
+        -H "Content-Type: multipart/form-data" \
+        -H "Authorization: Token $DEFECT_DOJO_TOKEN" \
+        -F "minimum_severity=Info" \
+        -F "active=true" \
+        -F "verified=true" \
+        -F "scan_type=Trivy Scan" \
+        -F "file=@trivy-report.json" \
         -F "close_old_findings=true" \
         -F "product_name=$CI_PROJECT_NAME" \
         -F "scan_date=$FORMATTED_DATE" \
